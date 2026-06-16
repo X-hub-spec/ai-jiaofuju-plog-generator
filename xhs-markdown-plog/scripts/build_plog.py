@@ -46,6 +46,7 @@ def inline_markdown(text: str) -> str:
     text = escape(text)
     text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
     text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+    text = text.replace("\n", "<br />")
     return text
 
 
@@ -53,6 +54,7 @@ def highlight_code_line(line: str) -> str:
     html = escape(line)
     html = re.sub(r"(&quot;[^&]*?&quot;|&#x27;[^&]*?&#x27;)", r'<span class="code-string">\1</span>', html)
     html = re.sub(r"(^|\s)(--[\w-]+)", r'\1<span class="code-flag">\2</span>', html)
+    html = re.sub(r"(^|\s)(https?://[^\s<]+)", r'\1<span class="code-path">\2</span>', html)
     html = re.sub(r"(^|\s)(/[^\s<]+)", r'\1<span class="code-path">\2</span>', html)
     html = re.sub(r"(^|\s)((?:\.{1,2}/)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.@-]+)+(?:\.[A-Za-z0-9_-]+)?)", r'\1<span class="code-path">\2</span>', html)
     html = re.sub(r"^(\s*)([A-Za-z_][\w.-]*)(?=\s|$)", r'\1<span class="code-command">\2</span>', html)
@@ -60,10 +62,12 @@ def highlight_code_line(line: str) -> str:
 
 
 def render_code_block(code: str, language: str = "") -> str:
-    label = escape(language.strip() or "Code")
+    raw_label = language.strip() or "Code"
+    label = escape(raw_label[:1].upper() + raw_label[1:] if raw_label else "Code")
+    code_lines = code.split("\n") if code else [""]
     lines = "\n".join(
         f'<span class="code-line">{highlight_code_line(line)}</span>'
-        for line in code.rstrip("\n").split("\n")
+        for line in code_lines
     )
     return f'<pre class="code-block"><span class="code-label">{label}</span><code>{lines}</code></pre>'
 
@@ -99,9 +103,8 @@ def parse_markdown(content: str, asset_refs: list[str]) -> list[dict[str, Any]]:
     def flush_paragraph() -> None:
         nonlocal paragraph
         if paragraph:
-            text = " ".join(line.strip() for line in paragraph).strip()
-            for chunk in split_long_paragraph(text):
-                blocks.append({"type": "p", "text": chunk})
+            text = "\n".join(line.rstrip() for line in paragraph).strip()
+            blocks.append({"type": "p", "text": text})
             paragraph = []
 
     def flush_list() -> None:
@@ -134,7 +137,7 @@ def parse_markdown(content: str, asset_refs: list[str]) -> list[dict[str, Any]]:
             continue
 
         if in_code:
-            code_lines.append(raw_line.rstrip())
+            code_lines.append(raw_line)
             continue
 
         if not line:
@@ -183,7 +186,7 @@ def parse_markdown(content: str, asset_refs: list[str]) -> list[dict[str, Any]]:
             list_items.append(list_match.group(1).strip())
             continue
 
-        paragraph.append(line)
+        paragraph.append(raw_line)
 
     flush_paragraph()
     flush_list()
@@ -283,27 +286,34 @@ def render_html(config: dict[str, Any], pages: list[list[dict[str, Any]]], copie
     if theme not in {"reading", "pro"}:
         theme = "reading"
     theme_class = f"theme-{theme}"
+    kicker = config.get("kicker", "SYSTEM.LOG / ARTICLE")
 
     page_html: list[str] = []
-    cover_image_html = f'<div class="cover-media"><img src="{escape(cover_src)}" alt="" /></div>' if cover_src else ""
+    cover_image_html = f'<div class="cover-image-card"><img src="{escape(cover_src)}" alt="" /></div>' if cover_src else ""
     subtitle_html = f"<p class=\"subtitle\">{inline_markdown(subtitle)}</p>" if subtitle else ""
     author_html = f"<p class=\"author\">{inline_markdown(author)}</p>" if author else ""
     page_html.append(
         f"""
         <section class="page cover {theme_class}">
+          <span class="kicker">{inline_markdown(str(kicker))}</span>
+          <h1>{inline_markdown(title)}</h1>
+          {subtitle_html}
           {cover_image_html}
-          <div class="cover-copy">
-            <h1>{inline_markdown(title)}</h1>
-            {subtitle_html}
-            {author_html}
-          </div>
+          {author_html}
         </section>
         """
     )
 
-    for page_blocks in pages:
+    base_doc_name = config.get("doc_name") or slugify(title) or "article"
+    for index, page_blocks in enumerate(pages, start=2):
         content = "\n".join(render_block(block, copied_lookup, out_dir / "assets", used_names) for block in page_blocks)
-        page_html.append(f'<section class="page content {theme_class}"><article>{content}</article></section>')
+        doc_name = f"{index:02d}-{base_doc_name}.md"
+        page_html.append(
+            f'<section class="page content {theme_class}"><div class="article-window">'
+            f'<div class="doc-name">{escape(doc_name)}</div>'
+            f'<article class="article-body">{content}</article>'
+            f'</div></section>'
+        )
 
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -315,9 +325,9 @@ def render_html(config: dict[str, Any], pages: list[list[dict[str, Any]]], copie
     * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
-      background: #e9e9e9;
-      color: #171717;
-      font-family: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", "SimSun", serif;
+      background: #d9ddd8;
+      color: #141a18;
+      font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
     }}
     .deck {{
       width: min({width}px, calc(100vw - 24px));
@@ -330,35 +340,46 @@ def render_html(config: dict[str, Any], pages: list[list[dict[str, Any]]], copie
       width: {width}px;
       height: {height}px;
       max-width: 100%;
-      aspect-ratio: {width} / {height};
       position: relative;
       overflow: hidden;
       background: var(--paper);
-      box-shadow: 0 18px 52px rgba(0,0,0,.14);
+      box-shadow: 0 24px 70px rgba(0,0,0,.2);
+      --bg: #efe3ce;
       --paper: #fbf5e9;
       --ink: #2f251b;
       --muted: #806b56;
       --line: #e2d2bd;
-      --cover-bg: #efe3ce;
       --cover-text: #3a2a1e;
       --accent: #8e5b2c;
       --accent-soft: rgba(190, 145, 82, .22);
-      --code-bg: #151515;
-      --code-text: #f2f1ed;
-      --code-muted: #d3d0c8;
-      --code-red: #ff5a52;
-      --code-green: #5ee37b;
+      --chip-bg: rgba(100, 70, 38, .08);
+      --chip-border: rgba(100, 70, 38, .28);
+      --chip-text: #6f4824;
+      --bar-bg: #f3e8d7;
+      --bar-text: #806b56;
+      --window-bg: #fffaf1;
+      --code-bg: #141414;
+      --code-text: #f4f1ea;
+      --code-muted: #d8d2c3;
+      --code-red: #ff5d57;
+      --code-green: #58e37d;
       --code-border: rgba(255,255,255,.08);
     }}
     .theme-pro {{
+      --bg: #191716;
       --paper: #f4f3ee;
       --ink: #171615;
       --muted: #6d665b;
       --line: #d8d3c8;
-      --cover-bg: #191716;
       --cover-text: #f4efe4;
       --accent: #d7aa49;
       --accent-soft: rgba(215, 170, 73, .22);
+      --chip-bg: rgba(215, 170, 73, .12);
+      --chip-border: rgba(215, 170, 73, .42);
+      --chip-text: #e9c877;
+      --bar-bg: #ebe8df;
+      --bar-text: #6d665b;
+      --window-bg: #fffdf8;
       --code-bg: #141414;
       --code-text: #f4f1ea;
       --code-muted: #d8d2c3;
@@ -367,83 +388,147 @@ def render_html(config: dict[str, Any], pages: list[list[dict[str, Any]]], copie
       --code-border: rgba(215,170,73,.18);
     }}
     .cover {{
-      display: flex;
-      flex-direction: column;
-      background: var(--cover-bg);
+      padding: 64px 72px 54px;
+      background: var(--bg);
       color: var(--cover-text);
     }}
-    .cover-media {{
-      width: 100%;
-      height: 48%;
-      margin-top: 6%;
-      overflow: hidden;
-      background: #fff;
+    .cover::before,
+    .cover::after {{
+      content: "";
+      position: absolute;
+      left: 72px;
+      right: 72px;
+      height: 1px;
+      background: color-mix(in srgb, var(--cover-text) 28%, transparent);
     }}
-    .cover-media img {{
-      width: 100%;
-      height: 100%;
+    .cover::before {{ top: 104px; }}
+    .cover::after {{ bottom: 104px; }}
+    .kicker {{
+      display: inline-flex;
+      align-items: center;
+      height: 38px;
+      padding: 0 14px;
+      border: 1px solid var(--chip-border);
+      border-radius: 6px;
+      background: var(--chip-bg);
+      color: var(--chip-text);
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: .02em;
+    }}
+    .cover-image-card {{
+      margin-top: 64px;
+      height: 640px;
+      padding: 18px;
+      border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+      border-radius: 12px;
+      background: #f9faf7;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }}
+    .cover-image-card img {{
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
       object-fit: contain;
       display: block;
-    }}
-    .cover-copy {{
-      padding: 64px 72px 72px;
     }}
     h1, h2, h3, p, blockquote, ul, figure {{
       margin-top: 0;
     }}
     .cover h1 {{
-      margin-bottom: 56px;
+      margin: 86px 0 0;
+      max-width: 930px;
       color: var(--cover-text);
-      font-size: 72px;
+      font-size: 58px;
       line-height: 1.18;
-      font-weight: 600;
+      font-weight: 900;
       letter-spacing: 0;
     }}
-    .subtitle, .author {{
-      margin-bottom: 34px;
-      color: var(--cover-text);
-      font-size: 38px;
-      line-height: 1.65;
+    .subtitle {{
+      margin: 28px 0 0;
+      max-width: 880px;
+      color: color-mix(in srgb, var(--cover-text) 82%, transparent);
+      font-size: 28px;
+      line-height: 1.55;
+      font-weight: 750;
     }}
     .author {{
-      margin-top: 90px;
-      padding-top: 36px;
-      border-top: 4px solid #888;
-      font-size: 36px;
+      position: absolute;
+      left: 72px;
+      bottom: 52px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      color: color-mix(in srgb, var(--cover-text) 62%, transparent);
+      font-size: 20px;
+      font-weight: 850;
     }}
-    .content article {{
-      padding: 82px 72px;
-      height: 100%;
+    .content {{
+      padding: 72px;
+      background: var(--paper);
       color: var(--ink);
     }}
-    .content h1 {{
-      margin-bottom: 42px;
-      font-size: 62px;
+    .article-window {{
+      height: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--window-bg);
+      overflow: hidden;
+    }}
+    .doc-name {{
+      height: 50px;
+      padding: 0 22px;
+      display: flex;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      background: var(--bar-bg);
+      color: var(--bar-text);
+      font-size: 18px;
+      font-weight: 900;
+    }}
+    .article-body {{
+      padding: 52px 34px 44px;
+      height: calc(100% - 50px);
+      color: var(--ink);
+      overflow: hidden;
+    }}
+    .article-body h1 {{
+      margin-bottom: 34px;
+      font-size: 38px;
       line-height: 1.35;
-      font-weight: 650;
+      font-weight: 900;
     }}
-    .content h2 {{
-      margin: 12px 0 42px;
-      font-size: 54px;
+    .article-body h2 {{
+      margin: 8px 0 30px;
+      font-size: 34px;
       line-height: 1.38;
-      font-weight: 650;
+      font-weight: 900;
     }}
-    .content h3 {{
-      margin: 10px 0 36px;
-      font-size: 48px;
+    .article-body h3 {{
+      margin: 8px 0 26px;
+      font-size: 30px;
       line-height: 1.42;
-      font-weight: 650;
+      font-weight: 900;
     }}
-    .content p {{
-      margin-bottom: 46px;
-      font-size: 43px;
-      line-height: 1.86;
-      font-weight: 400;
+    .article-body p {{
+      margin-bottom: 20px;
+      font-size: 26px;
+      line-height: 1.52;
+      font-weight: 780;
       letter-spacing: 0;
     }}
-    .content strong {{
-      font-weight: 700;
+    .article-body strong {{
+      font-weight: 950;
       color: var(--accent);
+      background: var(--accent-soft);
+      padding: 2px 7px;
+      border-radius: 4px;
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
     }}
     code {{
       padding: 0 .18em;
@@ -454,16 +539,16 @@ def render_html(config: dict[str, Any], pages: list[list[dict[str, Any]]], copie
       font-size: .9em;
     }}
     .code-block {{
-      margin: 48px 0 56px;
-      padding: 44px 52px 46px;
+      margin: 26px 0 24px;
+      padding: 42px 52px 44px;
       border: 1px solid var(--code-border);
       border-radius: 56px;
       background: var(--code-bg);
       color: var(--code-text);
       font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
-      font-size: 30px;
-      line-height: 1.42;
-      font-weight: 650;
+      font-size: 24px;
+      line-height: 1.44;
+      font-weight: 780;
       white-space: pre-wrap;
       word-break: break-word;
       box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 16px 34px rgba(0,0,0,.12);
@@ -478,11 +563,12 @@ def render_html(config: dict[str, Any], pages: list[list[dict[str, Any]]], copie
     }}
     .code-label {{
       display: block;
-      margin-bottom: 28px;
+      margin-bottom: 26px;
       color: var(--code-muted);
       font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
-      font-size: 24px;
-      font-weight: 800;
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 850;
     }}
     .code-line {{
       display: block;
@@ -497,28 +583,30 @@ def render_html(config: dict[str, Any], pages: list[list[dict[str, Any]]], copie
       color: var(--code-green);
     }}
     blockquote {{
-      margin-bottom: 48px;
-      padding-left: 28px;
+      margin-bottom: 24px;
+      padding-left: 18px;
       border-left: 5px solid var(--accent);
       color: var(--ink);
-      font-size: 42px;
-      line-height: 1.75;
+      font-size: 26px;
+      line-height: 1.52;
+      font-weight: 780;
     }}
     ul {{
-      margin-bottom: 48px;
+      margin-bottom: 24px;
       padding-left: 1.35em;
-      font-size: 42px;
-      line-height: 1.72;
+      font-size: 26px;
+      line-height: 1.52;
+      font-weight: 780;
     }}
     li {{
       margin-bottom: 18px;
     }}
     figure {{
-      margin: 48px 0 58px;
+      margin: 28px 0 34px;
     }}
     figure img {{
       width: 100%;
-      max-height: 680px;
+      max-height: 520px;
       object-fit: contain;
       display: block;
       background: color-mix(in srgb, var(--paper) 88%, #fff);

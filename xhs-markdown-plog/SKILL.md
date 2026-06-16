@@ -20,6 +20,8 @@ Current approved style families:
 
 Before generating a new PLOG, ask the user to choose between `书面阅读感` and `专业黑金` unless they already specified one of these two styles in the request. Do not offer old color routes such as orange or blue unless the user explicitly asks for more experiments.
 
+Content fidelity is mandatory: this skill lays out the user's source text; it must not summarize, condense, polish, rewrite, translate, add transitions, or change wording unless the user explicitly requests editing. Markdown-to-HTML rendering, pagination, image placement, and visual highlighting are allowed; prose changes are not.
+
 ## Workflow
 
 1. Gather inputs:
@@ -86,6 +88,7 @@ Prefer manual page breaks when the user cares about exact pacing. Otherwise let 
 - For long articles, split by semantic sections, not arbitrary character count.
 - Avoid tiny text. If a page feels dense, add a page break instead of shrinking below readable size.
 - Preserve the user's wording unless they ask for rewriting or condensation.
+- Preserve source paragraph boundaries and hard line breaks as much as the format allows. Do not split long paragraphs into new paragraphs merely for layout.
 - For article PLOGs, keep body pages faithful to the source. Do not add explanatory claims, summary judgments, transition sentences, or "核心判断" style text unless those words are in the source or the user explicitly asks for commentary.
 - Do not add a large heading to every body page by default. Use body-page headings only when the source already has section headings or the user asks for them.
 - Highlight only exact source phrases or source sentences. Do not label highlights with "Auto Highlight", "自动高亮", or similar meta text.
@@ -122,5 +125,6 @@ Before final response:
 - Confirm `index.html` opens without missing images when images were provided.
 - Confirm page 1 has the title and, when provided, the cover image.
 - Confirm later pages contain the text/image content.
+- Spot-check that body text is source-faithful: no summaries, no rewritten sentences, no deleted clauses, no added commentary.
 - Confirm exported PNG dimensions match the chosen canvas.
 - Visually inspect the cover and at least one later page.
