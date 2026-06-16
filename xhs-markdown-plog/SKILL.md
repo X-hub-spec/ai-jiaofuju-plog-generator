@@ -9,7 +9,7 @@ description: Generate Xiaohongshu/RedNote PLOG image decks from a document title
 
 Turn a document title, body content, and image assets into a clean Xiaohongshu PLOG deck:
 
-- Page 1: cover page with the title and one strong image.
+- Page 1: cover page with the title and, when provided, one strong image. If no image is provided, create a clean title-only cover.
 - Later pages: Markdown-like text and image pages.
 - Style: clean article-reading layout with a cover page, generous margins, Markdown-like hierarchy, and no decorative clutter.
 
@@ -25,7 +25,7 @@ Before generating a new PLOG, ask the user to choose between `书面阅读感` a
 1. Gather inputs:
    - Title.
    - Body content, preferably Markdown or plain text with paragraphs.
-   - Image assets as absolute local paths.
+   - Image assets as absolute local paths, when available.
    - Optional author, subtitle, page size, and output directory.
    - Style choice: ask `这次用「书面阅读感」还是「专业黑金」？` when the user has not specified it.
 2. Create an output folder, usually under the current project, for example `output/xhs-markdown-plog/<slug>/`.
@@ -58,7 +58,7 @@ Create a JSON file like this:
 Defaults:
 
 - Canvas: `1080 x 1440` / `3:4`.
-- Cover image: `cover_image`, or the first item in `assets`.
+- Cover image: `cover_image`, or the first item in `assets`; optional when the user only provides text.
 - Theme: `reading` or `pro`; ask the user first when missing.
 - Output: `index.html`, `assets/`, and `plog-config.used.json`.
 
@@ -80,7 +80,7 @@ Prefer manual page breaks when the user cares about exact pacing. Otherwise let 
 
 ## Layout Judgment
 
-- Keep the first page simple: one image plus the title, optional subtitle/author.
+- Keep the first page simple: one image plus the title when imagery is available; otherwise use a clean title-only cover with optional subtitle/author.
 - Do not put long body text on the cover.
 - Use 1 image per page when possible; pair an image with 2-4 paragraphs if it supports the text.
 - For long articles, split by semantic sections, not arbitrary character count.
@@ -101,26 +101,26 @@ Prefer manual page breaks when the user cares about exact pacing. Otherwise let 
 
 ## Commands
 
-Generate HTML:
+Generate HTML from the installed skill directory:
 
 ```bash
-python3 /Users/xuansir/.codex/skills/xhs-markdown-plog/scripts/build_plog.py config.json output/xhs-markdown-plog/my-plog
+python3 "$HOME/.codex/skills/xhs-markdown-plog/scripts/build_plog.py" config.json output/xhs-markdown-plog/my-plog
 ```
 
-Export PNGs when Playwright is available:
+Export PNGs when Node.js and Playwright are available:
 
 ```bash
-node /Users/xuansir/.codex/skills/xhs-markdown-plog/scripts/export_pages.mjs output/xhs-markdown-plog/my-plog/index.html output/xhs-markdown-plog/my-plog/exports
+node "$HOME/.codex/skills/xhs-markdown-plog/scripts/export_pages.mjs" output/xhs-markdown-plog/my-plog/index.html output/xhs-markdown-plog/my-plog/exports
 ```
 
-If the workspace uses bundled Node dependencies, set `NODE_PATH` to the bundled `node_modules` before running the export script. If a screenshot is off by 1px from browser rounding, normalize it with ImageMagick `-extent`.
+If Playwright is missing, install it in the project running the export command (`npm install` when using this repository, or `npm install -D playwright && npx playwright install chromium`). If the workspace uses bundled Node dependencies, set `NODE_PATH` to the bundled `node_modules` before running the export script. If a screenshot is off by 1px from browser rounding, normalize it with ImageMagick `-extent`.
 
 ## Verification
 
 Before final response:
 
-- Confirm `index.html` opens without missing images.
-- Confirm page 1 has title and image.
+- Confirm `index.html` opens without missing images when images were provided.
+- Confirm page 1 has the title and, when provided, the cover image.
 - Confirm later pages contain the text/image content.
 - Confirm exported PNG dimensions match the chosen canvas.
 - Visually inspect the cover and at least one later page.

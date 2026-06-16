@@ -54,6 +54,7 @@ def highlight_code_line(line: str) -> str:
     html = re.sub(r"(&quot;[^&]*?&quot;|&#x27;[^&]*?&#x27;)", r'<span class="code-string">\1</span>', html)
     html = re.sub(r"(^|\s)(--[\w-]+)", r'\1<span class="code-flag">\2</span>', html)
     html = re.sub(r"(^|\s)(/[^\s<]+)", r'\1<span class="code-path">\2</span>', html)
+    html = re.sub(r"(^|\s)((?:\.{1,2}/)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.@-]+)+(?:\.[A-Za-z0-9_-]+)?)", r'\1<span class="code-path">\2</span>', html)
     html = re.sub(r"^(\s*)([A-Za-z_][\w.-]*)(?=\s|$)", r'\1<span class="code-command">\2</span>', html)
     return html
 

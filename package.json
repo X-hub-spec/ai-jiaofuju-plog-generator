@@ -1,0 +1,13 @@
+{
+  "name": "ai-jiaofuju-plog-generator",
+  "version": "0.1.0",
+  "private": false,
+  "description": "AI 交付局图文Plog生成器：把 Markdown、Word/docx、文字和配图自动生成小红书 PLOG。",
+  "type": "module",
+  "scripts": {
+    "export": "node xhs-markdown-plog/scripts/export_pages.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.57.0"
+  }
+}
