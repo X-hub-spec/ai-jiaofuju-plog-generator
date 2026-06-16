@@ -1,0 +1,4 @@
+interface:
+  display_name: "小红书 Markdown PLOG"
+  short_description: "把标题、正文和图片素材生成简洁 Markdown 风格小红书 PLOG。"
+  default_prompt: "把这篇文档和素材做成一组简洁 Markdown 风格的小红书 PLOG。"
