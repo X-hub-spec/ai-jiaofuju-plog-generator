@@ -22,6 +22,8 @@ Before generating a new PLOG, ask the user to choose between `书面阅读感` a
 
 Content fidelity is mandatory: this skill lays out the user's source text; it must not summarize, condense, polish, rewrite, translate, add transitions, or change wording unless the user explicitly requests editing. Markdown-to-HTML rendering, pagination, image placement, and visual highlighting are allowed; prose changes are not.
 
+For any agent or external AI tool invoking this skill, the source article must be passed through verbatim via `content` or `content_file`. Do not ask the model to "整理", "提炼", "优化", "润色", "改写", or "生成适合小红书的文案" as an intermediate step. If the article is too long for one page, add pages; never shorten the article.
+
 ## Workflow
 
 1. Gather inputs:
@@ -52,6 +54,7 @@ Create a JSON file like this:
     "/absolute/path/image-2.webp"
   ],
   "content": "正文 Markdown 或纯文本",
+  "content_file": "可选：相对 config 文件或绝对路径的 Markdown 文件",
   "theme": "reading",
   "canvas": { "width": 1080, "height": 1440 }
 }
@@ -61,6 +64,8 @@ Defaults:
 
 - Canvas: `1080 x 1440` / `3:4`.
 - Cover image: `cover_image`, or the first item in `assets`; optional when the user only provides text.
+- Content: use either `content` or `content_file`. When both are present, script implementations should prefer `content_file`.
+- Relative paths in `cover_image`, `assets`, and `content_file` are resolved from the config file directory. Relative image paths inside a Markdown `content_file` are resolved from that Markdown file's directory.
 - Theme: `reading` or `pro`; ask the user first when missing.
 - Output: `index.html`, `assets/`, and `plog-config.used.json`.
 
@@ -90,6 +95,7 @@ Prefer manual page breaks when the user cares about exact pacing. Otherwise let 
 - Preserve the user's wording unless they ask for rewriting or condensation.
 - Preserve source paragraph boundaries and hard line breaks as much as the format allows. Do not split long paragraphs into new paragraphs merely for layout.
 - For article PLOGs, keep body pages faithful to the source. Do not add explanatory claims, summary judgments, transition sentences, or "核心判断" style text unless those words are in the source or the user explicitly asks for commentary.
+- When starting from Word/docx or another rich document, extract the article text and image references faithfully before building the config. Do not rewrite during extraction.
 - Do not add a large heading to every body page by default. Use body-page headings only when the source already has section headings or the user asks for them.
 - Highlight only exact source phrases or source sentences. Do not label highlights with "Auto Highlight", "自动高亮", or similar meta text.
 - For code-reader styles, avoid visible line numbers, `//` comment prefixes, page corner marks, or artificial terminal text unless the user explicitly asks for those elements.

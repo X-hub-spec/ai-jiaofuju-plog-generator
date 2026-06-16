@@ -42,6 +42,13 @@ def copy_asset(src: str, asset_dir: Path, used_names: set[str]) -> str:
     return f"assets/{name}"
 
 
+def resolve_local_path(src: str, base_dir: Path) -> str:
+    path = Path(src).expanduser()
+    if not path.is_absolute():
+        path = base_dir / path
+    return str(path)
+
+
 def inline_markdown(text: str) -> str:
     text = escape(text)
     text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
@@ -70,26 +77,6 @@ def render_code_block(code: str, language: str = "") -> str:
         for line in code_lines
     )
     return f'<pre class="code-block"><span class="code-label">{label}</span><code>{lines}</code></pre>'
-
-
-def split_long_paragraph(text: str, max_chars: int = 170) -> list[str]:
-    if len(text) <= max_chars:
-        return [text]
-
-    sentences = re.split(r"(?<=[。！？!?；;])", text)
-    chunks: list[str] = []
-    current = ""
-    for sentence in sentences:
-        if not sentence:
-            continue
-        if current and len(current) + len(sentence) > max_chars:
-            chunks.append(current.strip())
-            current = sentence
-        else:
-            current += sentence
-    if current.strip():
-        chunks.append(current.strip())
-    return chunks or [text]
 
 
 def parse_markdown(content: str, asset_refs: list[str]) -> list[dict[str, Any]]:
@@ -246,7 +233,7 @@ def paginate(blocks: list[dict[str, Any]], page_height: int) -> list[list[dict[s
     return pages
 
 
-def render_block(block: dict[str, Any], copied_lookup: dict[str, str], asset_dir: Path, used_names: set[str]) -> str:
+def render_block(block: dict[str, Any], copied_lookup: dict[str, str], asset_dir: Path, used_names: set[str], content_base_dir: Path) -> str:
     kind = block["type"]
     if kind in {"h1", "h2", "h3"}:
         return f"<{kind}>{inline_markdown(block['text'])}</{kind}>"
@@ -263,18 +250,24 @@ def render_block(block: dict[str, Any], copied_lookup: dict[str, str], asset_dir
         src = block["src"]
         if src in copied_lookup:
             final_src = copied_lookup[src]
-        elif Path(src).expanduser().suffix.lower() in IMAGE_EXTS and Path(src).expanduser().exists():
-            final_src = copy_asset(src, asset_dir, used_names)
-            copied_lookup[src] = final_src
         else:
-            final_src = src
+            local_src = resolve_local_path(src, content_base_dir)
+            if local_src in copied_lookup:
+                final_src = copied_lookup[local_src]
+                copied_lookup[src] = final_src
+            elif Path(local_src).expanduser().suffix.lower() in IMAGE_EXTS and Path(local_src).expanduser().exists():
+                final_src = copy_asset(local_src, asset_dir, used_names)
+                copied_lookup[src] = final_src
+                copied_lookup[local_src] = final_src
+            else:
+                final_src = src
         caption = block.get("caption") or ""
         caption_html = f"<figcaption>{inline_markdown(caption)}</figcaption>" if caption else ""
         return f'<figure><img src="{escape(final_src)}" alt="{escape(caption)}" />{caption_html}</figure>'
     return ""
 
 
-def render_html(config: dict[str, Any], pages: list[list[dict[str, Any]]], copied_lookup: dict[str, str], out_dir: Path, used_names: set[str]) -> str:
+def render_html(config: dict[str, Any], pages: list[list[dict[str, Any]]], copied_lookup: dict[str, str], out_dir: Path, used_names: set[str], content_base_dir: Path) -> str:
     canvas = config.get("canvas") or {}
     width = int(canvas.get("width", 1080))
     height = int(canvas.get("height", 1440))
@@ -306,7 +299,7 @@ def render_html(config: dict[str, Any], pages: list[list[dict[str, Any]]], copie
 
     base_doc_name = config.get("doc_name") or slugify(title) or "article"
     for index, page_blocks in enumerate(pages, start=2):
-        content = "\n".join(render_block(block, copied_lookup, out_dir / "assets", used_names) for block in page_blocks)
+        content = "\n".join(render_block(block, copied_lookup, out_dir / "assets", used_names, content_base_dir) for block in page_blocks)
         doc_name = f"{index:02d}-{base_doc_name}.md"
         page_html.append(
             f'<section class="page content {theme_class}"><div class="article-window">'
@@ -649,12 +642,17 @@ def main() -> None:
     config = json.loads(config_path.read_text(encoding="utf-8"))
     if not config.get("title"):
         raise ValueError("Config must include title.")
+    config_dir = config_path.parent
 
     used_names: set[str] = set()
     copied_lookup: dict[str, str] = {}
-    assets = [str(path) for path in config.get("assets", [])]
+    assets = [resolve_local_path(str(path), config_dir) for path in config.get("assets", [])]
 
-    cover_image = config.get("cover_image") or (assets[0] if assets else "")
+    cover_image = config.get("cover_image")
+    if cover_image:
+        cover_image = resolve_local_path(str(cover_image), config_dir)
+    elif assets:
+        cover_image = assets[0]
     if cover_image:
         copied_lookup[cover_image] = copy_asset(cover_image, asset_dir, used_names)
         config["cover_image"] = cover_image
@@ -668,11 +666,18 @@ def main() -> None:
             copied_lookup[asset] = copied
             asset_refs.append(copied)
 
-    content = config.get("content", "")
+    content_base_dir = config_dir
+    if config.get("content_file"):
+        content_file = resolve_local_path(str(config["content_file"]), config_dir)
+        content_base_dir = Path(content_file).parent
+        content = Path(content_file).read_text(encoding="utf-8")
+        config["content_file"] = content_file
+    else:
+        content = config.get("content", "")
     blocks = parse_markdown(content, asset_refs)
     height = int((config.get("canvas") or {}).get("height", 1920))
     pages = paginate(blocks, height)
-    html = render_html(config, pages, copied_lookup, out_dir, used_names)
+    html = render_html(config, pages, copied_lookup, out_dir, used_names, content_base_dir)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "index.html").write_text(html, encoding="utf-8")
